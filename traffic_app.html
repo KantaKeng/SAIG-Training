@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>วิเคราะห์การจราจร</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', 'Sarabun', sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 28px;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: #8b949e; margin-bottom: 6px; }
+  .field input {
+    width: 100%;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #e6edf3;
+    font-size: 14px;
+  }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+  button.primary {
+    width: 100%;
+    background: #388bfd;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  button.primary:disabled { background: #30363d; cursor: not-allowed; }
+  button.link {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #58a6ff;
+    font-size: 13px;
+    padding: 8px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .status { font-size: 12px; color: #8b949e; text-align: center; margin-top: 10px; min-height: 16px; }
+
+  .result { display: none; margin-top: 20px; border-top: 1px solid #30363d; padding-top: 20px; }
+  .result.show { display: block; }
+  .road-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .road-sub { font-size: 12px; color: #8b949e; margin-bottom: 16px; }
+
+  .risk-banner {
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .risk-low { background: #3fb95022; border: 1px solid #3fb95055; }
+  .risk-medium { background: #f0b90b22; border: 1px solid #f0b90b55; }
+  .risk-high { background: #f8514922; border: 1px solid #f8514955; }
+  .risk-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .risk-low .risk-title { color: #3fb950; }
+  .risk-medium .risk-title { color: #f0b90b; }
+  .risk-high .risk-title { color: #f85149; }
+  .risk-desc { font-size: 13px; color: #c9d1d9; line-height: 1.6; }
+
+  .stats { display: flex; gap: 10px; }
+  .stat { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px; text-align: center; }
+  .stat .label { font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+  .stat .value { font-size: 20px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>วิเคราะห์การจราจร</h1>
+  <div class="subtitle">ทำนายความเร็วรถล่วงหน้า 15 นาที</div>
+
+  <div class="field">
+    <label>ตำแหน่งถนน</label>
+    <input type="text" id="roadLabel" placeholder="ใช้ GPS ปัจจุบัน หรือกรอกเอง" readonly>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>ละติจูด</label>
+      <input type="text" id="latInput" placeholder="13.7367">
+    </div>
+    <div class="field">
+      <label>ลองจิจูด</label>
+      <input type="text" id="lonInput" placeholder="100.5605">
+    </div>
+  </div>
+  <button class="link" id="gpsBtn">ใช้ตำแหน่งปัจจุบัน (GPS)</button>
+
+  <button class="primary" id="analyzeBtn">วิเคราะห์</button>
+  <div class="status" id="statusText"></div>
+
+  <div class="result" id="resultBox">
+    <div class="road-name" id="resultRoad"></div>
+    <div class="road-sub" id="resultMeta"></div>
+
+    <div class="risk-banner" id="riskBanner">
+      <div class="risk-title" id="riskTitle"></div>
+      <div class="risk-desc" id="riskDesc"></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="label">ตอนนี้</div>
+        <div class="value" id="statNow">–</div>
+      </div>
+      <div class="stat">
+        <div class="label">อีก 15 นาที</div>
+        <div class="value" id="statFuture">–</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = 'http://localhost:5000';
+
+const latInput = document.getElementById('latInput');
+const lonInput = document.getElementById('lonInput');
+const roadLabel = document.getElementById('roadLabel');
+const statusText = document.getElementById('statusText');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const resultBox = document.getElementById('resultBox');
+
+document.getElementById('gpsBtn').addEventListener('click', () => {
+  if (!navigator.geolocation) {
+    statusText.textContent = 'เบราว์เซอร์นี้ไม่รองรับ GPS';
+    return;
+  }
+  statusText.textContent = 'กำลังขอตำแหน่ง...';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      latInput.value = pos.coords.latitude.toFixed(6);
+      lonInput.value = pos.coords.longitude.toFixed(6);
+      roadLabel.value = 'ใช้ตำแหน่งจาก GPS แล้ว';
+      statusText.textContent = '';
+    },
+    err => { statusText.textContent = 'ขอตำแหน่งไม่สำเร็จ: ' + err.message; }
+  );
+});
+
+analyzeBtn.addEventListener('click', async () => {
+  const lat = parseFloat(latInput.value);
+  const lon = parseFloat(lonInput.value);
+
+  if (isNaN(lat) || isNaN(lon)) {
+    statusText.textContent = 'กรอกพิกัด หรือกดใช้ GPS ก่อน';
+    return;
+  }
+
+  analyzeBtn.disabled = true;
+  statusText.textContent = 'กำลังเรียก Longdo API และให้ AI วิเคราะห์...';
+  resultBox.classList.remove('show');
+
+  try {
+    const resp = await fetch(`${API_BASE}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lon })
+    });
+
+    if (!resp.ok) throw new Error('เซิร์ฟเวอร์ตอบกลับผิดพลาด (' + resp.status + ')');
+    const data = await resp.json();
+    renderResult(data);
+    statusText.textContent = '';
+  } catch (e) {
+    statusText.textContent = 'เชื่อมต่อ backend ไม่ได้: ' + e.message;
+  } finally {
+    analyzeBtn.disabled = false;
+  }
+});
+
+function riskInfo(level) {
+  if (level === 'high') return { cls: 'risk-high', title: 'รถติดหนัก', desc: 'ควรหลีกเลี่ยงหากไม่จำเป็น' };
+  if (level === 'medium') return { cls: 'risk-medium', title: 'รถติดปานกลาง', desc: 'อาจล่าช้ากว่าปกติเล็กน้อย' };
+  return { cls: 'risk-low', title: 'รถวิ่งได้ปกติ', desc: 'สภาพจราจรโล่ง เดินทางได้ตามปกติ' };
+}
+
+function renderResult(data) {
+  document.getElementById('resultRoad').textContent = data.road;
+  document.getElementById('resultMeta').textContent = `ทิศทาง: ${data.direction || '-'} · อัปเดต ${data.time}`;
+
+  const info = riskInfo(data.risk_level);
+  const banner = document.getElementById('riskBanner');
+  banner.className = 'risk-banner ' + info.cls;
+  document.getElementById('riskTitle').textContent = info.title;
+  document.getElementById('riskDesc').textContent =
+    `อีก 15 นาที ถนนเส้นนี้มีแนวโน้ม${info.title} คาดว่าความเร็วเฉลี่ยจะเหลือ ${data.predicted_speed.toFixed(0)} km/h ${info.desc}`;
+
+  document.getElementById('statNow').textContent = data.current_speed.toFixed(0) + ' km/h';
+  document.getElementById('statFuture').textContent = data.predicted_speed.toFixed(0) + ' km/h';
+
+  resultBox.classList.add('show');
+}
+</script>
+</body>
+</html>
